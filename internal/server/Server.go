@@ -1,6 +1,7 @@
 package server
 
 import (
+	"math/rand/v2"
 	"time"
 
 	"github.com/GAMINpanda/somas/internal/common/objects"
@@ -18,16 +19,24 @@ func Initialise(numAgents, iterations, turns, messageBandwidth int, timeout time
 	s := &Server{BaseServer: baseserver.CreateBaseServer[objects.IAmoeBoid](iterations, turns, timeout, messageBandwidth)}
 	s.SetGameRunner(s) // BaseServer can't see our methods through embedding, so pass them in
 	for range numAgents {
-		s.AddAgent(objects.NewBaseAmoeBoid(s))
+		s.AddAgent(objects.CreateBaseAmoeBoid(s))
 	}
 	return s
 }
 
-// RunStartOfIteration will replenish resources and run the political game.
+// RunStartOfIteration will do the voluntary association and deciding of rules
 func (s *Server) RunStartOfIteration(int) {}
 
-// RunTurn will run the operational game: agents decide, environment updates.
-func (s *Server) RunTurn(int, int) {}
+// Every agent randomly provisions and appropriates for now later add modfying rules and replenishing
+func (s *Server) RunTurn(int, int) {
+	for _, ag := range s.GetAgentMap() {
+		ag.SendProvisionMessage(rand.Float64() * 100)
+	}
 
-// RunEndOfIteration will apply the lifecycle (deaths) and record metrics.
+	for _, ag := range s.GetAgentMap() {
+		ag.SendAppropriationMessage(rand.Float64() * 100)
+	}
+}
+
+// RunEndOfIteration will increment coutner and disband
 func (s *Server) RunEndOfIteration(int) { s.Iterations++ }
