@@ -1,11 +1,13 @@
 package server_test
 
 import (
+	"math"
 	"testing"
 	"time"
 
 	"github.com/GAMINpanda/somas/internal/common/objects"
 	"github.com/GAMINpanda/somas/internal/server"
+	"github.com/GAMINpanda/somas/internal/weather"
 )
 
 func TestInitialise(t *testing.T) {
@@ -139,7 +141,7 @@ func TestSunlightPerRound(t *testing.T) {
 	s.RunStartOfIteration(0)
 
 	for _, a := range agents {
-		if sun := a.GetUtility(); sun < 8 || sun >= 12 {
+		if sun := a.GetUtility(); sun < 8 || sun > 12 {
 			t.Error("agent received", sun, "sunlight, expected 8 to 12")
 		}
 	}
@@ -307,5 +309,161 @@ func TestFullGameKeepsPoolsValid(t *testing.T) { // Random agents, including the
 	}
 	if s.CTK != 0 {
 		t.Error("CTK is", s.CTK, "expected 0 after the final round")
+	}
+}
+
+func TestGetBodyAndBrain(t *testing.T) {
+	s := server.Initialise(0, 1, 1, 10, 0)
+	a := objects.CreateBaseAmoeBoid(s)
+	a.Eat(7)
+	a.AddBrain(3)
+	if a.GetBody() != 7 || a.GetBrain() != 3 {
+		t.Error("body is", a.GetBody(), "and brain is", a.GetBrain(), "expected 7 and 3")
+	}
+}
+
+func TestPositionsDistinctAndInBounds(t *testing.T) {
+	numAgents := server.GridWidth * server.GridHeight // fill every cell so a clash would be certain to show up
+	s := server.Initialise(numAgents, 1, 1, 10, 0)
+	seen := make(map[server.Position]bool)
+	for id := range s.GetAgentMap() {
+		p, ok := s.GetPosition(id)
+		if !ok {
+			t.Fatal(id, "has no position")
+		}
+		if p.X < 0 || p.X >= server.GridWidth || p.Y < 0 || p.Y >= server.GridHeight {
+			t.Error(id, "is at", p, "which is outside the grid")
+		}
+		if seen[p] {
+			t.Error("two agents share cell", p)
+		}
+		seen[p] = true
+	}
+}
+
+func TestPositionGivenToAgentsAddedLater(t *testing.T) {
+	s := server.Initialise(0, 1, 1, 10, 0)
+	a := addScriptedAgent(s, 0, 0, 0, 0) // added directly, not through Initialise
+	if _, ok := s.GetPosition(a.GetID()); !ok {
+		t.Error("agent added with AddAgent has no position")
+	}
+}
+
+func TestPositionFixedAfterReAdd(t *testing.T) {
+	s := server.Initialise(1, 1, 1, 10, 0)
+	for id, ag := range s.GetAgentMap() {
+		before, _ := s.GetPosition(id)
+		s.AddAgent(ag)
+		if after, _ := s.GetPosition(id); after != before {
+			t.Error("agent moved from", before, "to", after, "when added again")
+		}
+	}
+}
+
+func TestPositionKeptAfterDeath(t *testing.T) {
+	s := server.Initialise(0, 1, 1, 10, 0)
+	starving := addScriptedAgent(s, 0, 0, 3, 200)
+	before, _ := s.GetPosition(starving.GetID())
+
+	s.RunEndOfIteration(0)
+
+	if after, ok := s.GetPosition(starving.GetID()); !ok || after != before {
+		t.Error("dead agent's position is", after, ok, "expected", before)
+	}
+}
+
+func TestMoreAgentsThanCells(t *testing.T) {
+	numAgents := server.GridWidth*server.GridHeight + 5
+	s := server.Initialise(numAgents, 1, 1, 10, 0)
+	for id := range s.GetAgentMap() {
+		if p, ok := s.GetPosition(id); !ok || p.X < 0 || p.X >= server.GridWidth || p.Y < 0 || p.Y >= server.GridHeight {
+			t.Error(id, "has position", p, ok, "expected a cell inside the grid")
+		}
+	}
+}
+
+func patchMatchesCPR(t *testing.T, s *server.Server) {
+	t.Helper()
+	if diff := s.Patch.Total() - s.CPR; diff > 1e-6 || diff < -1e-6 {
+		t.Error("patch holds", s.Patch.Total(), "but CPR is", s.CPR)
+	}
+}
+
+func TestPatchStartsAtCPR(t *testing.T) {
+	s := server.Initialise(0, 1, 1, 10, 0)
+	patchMatchesCPR(t, s)
+	if s.Patch.Width != server.GridWidth || s.Patch.Height != server.GridHeight || s.Patch.Capacity() != 1000 {
+		t.Error("patch is", s.Patch.Width, "x", s.Patch.Height, "holding", s.Patch.Capacity(), "expected 10 x 10 holding 1000")
+	}
+}
+
+func TestTurnEatsFromAgentsOwnTile(t *testing.T) {
+	s := server.Initialise(0, 1, 1, 10, 0)
+	a := addScriptedAgent(s, 3, 0, 0, 1000) // a bite smaller than one tile's 5 vegetables
+	pos, _ := s.GetPosition(a.GetID())
+
+	s.RunTurn(0, 0)
+
+	if got := s.Patch.Tile(pos.X, pos.Y); got < 1.99 || got > 2.01 {
+		t.Error("agent's tile holds", got, "expected 5 - 3 = 2")
+	}
+	patchMatchesCPR(t, s)
+}
+
+func TestPatchFollowsDirectCPRChanges(t *testing.T) { // tests and future rules may set s.CPR directly
+	s := server.Initialise(0, 1, 1, 10, 0)
+	addScriptedAgent(s, 5, 0, 0, 1000)
+	s.CPR = 10
+
+	s.RunTurn(0, 0)
+
+	patchMatchesCPR(t, s)
+}
+
+func TestRegrowthReachesPatch(t *testing.T) {
+	s := server.Initialise(0, 1, 1, 10, 0)
+	addScriptedAgent(s, 0, 30, 200, 200)
+
+	s.RunEndOfIteration(0)
+
+	if s.CPR != 625 {
+		t.Error("CPR is", s.CPR, "expected 625")
+	}
+	patchMatchesCPR(t, s)
+}
+
+func TestPatchMatchesCPRThroughGame(t *testing.T) {
+	s := server.Initialise(10, 50, 10, 10, 0)
+	s.Start()
+	patchMatchesCPR(t, s)
+}
+
+func TestSunlightFollowsCloudCover(t *testing.T) {
+	s := server.Initialise(0, 1, 1, 10, 0)
+	shaded := addScriptedAgent(s, 0, 0, 1000, 0)
+	sunny := addScriptedAgent(s, 0, 0, 1000, 0)
+	p, _ := s.GetPosition(shaded.GetID())
+	// one still cloud centred on the shaded agent, small enough to miss every other cell
+	s.Weather.Clouds = []weather.Cloud{{X: float64(p.X) + 0.5, Y: float64(p.Y) + 0.5, Radius: 0.5}}
+
+	s.RunStartOfIteration(0)
+
+	if got := shaded.GetBrain(); math.Abs(got-8) > 1e-9 {
+		t.Error("agent under the cloud got", got, "sunlight, expected 8")
+	}
+	if got := sunny.GetBrain(); math.Abs(got-12) > 1e-9 {
+		t.Error("agent in clear sky got", got, "sunlight, expected 12")
+	}
+}
+
+func TestCloudsDriftEachRound(t *testing.T) {
+	s := server.Initialise(0, 1, 1, 10, 0)
+	s.Weather.Clouds = []weather.Cloud{{X: 2, Y: 2, Radius: 2, VX: 1, VY: 0}}
+
+	s.RunStartOfIteration(0)
+	s.RunStartOfIteration(1)
+
+	if c := s.Weather.Clouds[0]; math.Abs(c.X-4) > 1e-9 || c.Y != 2 {
+		t.Error("cloud is at", c.X, c.Y, "after two rounds, expected 4, 2")
 	}
 }

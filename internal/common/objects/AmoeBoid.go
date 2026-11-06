@@ -18,6 +18,8 @@ type IAmoeBoid interface {
 	Eat(amount float64)
 	AddBrain(amount float64)
 	GetUtility() float64
+	GetBody() float64
+	GetBrain() float64
 	SpendBrain(amount float64) float64
 	Metabolise(cost float64) bool
 	DecideAppropriation(cpr float64) float64
@@ -51,6 +53,14 @@ func (ba *BaseAmoeBoid) AddBrain(amount float64) {
 
 func (ba *BaseAmoeBoid) GetUtility() float64     { 
 	return min(ba.body, ba.brain) 
+}
+
+func (ba *BaseAmoeBoid) GetBody() float64 {
+	return ba.body
+}
+
+func (ba *BaseAmoeBoid) GetBrain() float64 {
+	return ba.brain
 }
 
 func (ba *BaseAmoeBoid) SpendBrain(amount float64) float64 {

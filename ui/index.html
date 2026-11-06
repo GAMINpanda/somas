@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AmoeBoid Patch Viewer</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --panel: #fffdf8;
+    --text: #2b2620;
+    --muted: #6f665a;
+    --border: #ddd4c4;
+    --accent: #6b4fbb;
+    --gold: #f2b705;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17151a;
+      --panel: #211e25;
+      --text: #ece7f2;
+      --muted: #a39cab;
+      --border: #3a3540;
+      --accent: #a98bf0;
+      --gold: #ffcf3f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17151a;
+    --panel: #211e25;
+    --text: #ece7f2;
+    --muted: #a39cab;
+    --border: #3a3540;
+    --accent: #a98bf0;
+    --gold: #ffcf3f;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { font-size: 17px; margin: 0; white-space: nowrap; }
+  #runInfo { color: var(--muted); font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .button {
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+    white-space: nowrap;
+  }
+  .button:hover { border-color: var(--accent); }
+  #fileInput { display: none; }
+
+  main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: 16px;
+    padding: 12px 16px;
+  }
+  .stage {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  #canvasBox { flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; position: relative; }
+  canvas { display: block; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.18); }
+
+  .frameRow { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 760px; }
+  .frameRow input[type=range] { flex: 1; min-width: 60px; accent-color: var(--accent); }
+  #frameLabel { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; min-width: 96px; text-align: right; }
+  .iconButton { padding: 4px 9px; min-width: 34px; font-size: 13px; }
+  #playButton { min-width: 72px; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  select.button { padding: 4px 6px; }
+
+  .stat { margin-bottom: 10px; }
+  .stat:last-child { margin-bottom: 0; }
+  .statHead { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+  .statHead span:last-child { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .bar { position: relative; height: 10px; border-radius: 5px; background: var(--border); overflow: visible; }
+  .barFill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; transition: width .15s; }
+  .marker { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); }
+  .statNote { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  .logCard { flex: 1; min-height: 140px; display: flex; flex-direction: column; }
+  #log { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; font-size: 13px; font-variant-numeric: tabular-nums; }
+  #log li { padding: 2px 0; }
+  #log li.round { font-weight: 600; margin-top: 6px; color: var(--text); border-top: 1px solid var(--border); padding-top: 6px; }
+  #log li.round:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+  #log li.muted { color: var(--muted); }
+  #log li.good { color: #2f9a45; }
+  #log li.warn { color: #c07a12; }
+  #log li.bad { color: #d0453b; }
+  #log li.current { background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 4px; }
+  details.card summary { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  details.card[open] summary { margin-bottom: 8px; }
+
+  aside {
+    width: 260px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+  }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
+  #stepTitle { font-size: 16px; font-weight: 600; }
+  #stepDetail { color: var(--muted); margin-top: 4px; }
+  .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+  .legend li { display: flex; align-items: center; gap: 8px; }
+  .swatch { width: 26px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+
+  #tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(20, 18, 24, .92);
+    color: #f3eef8;
+    padding: 6px 9px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: nowrap;
+    display: none;
+    z-index: 2;
+  }
+
+  #empty {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
+    color: var(--muted);
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  #empty strong { color: var(--text); font-size: 16px; }
+  body.dragging #empty, body.dragging #canvasBox { outline: 2px dashed var(--accent); }
+
+  @media (max-width: 800px) {
+    main { flex-direction: column; overflow-y: auto; }
+    aside { width: 100%; }
+    #canvasBox { min-height: 320px; }
+    #runInfo { display: none; }
+    .frameRow { flex-wrap: wrap; }
+    .frameRow input[type=range] { order: 10; flex-basis: 100%; }
+    .logCard { max-height: 320px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>AmoeBoid Patch</h1>
+  <div id="runInfo">No run loaded</div>
+  <button class="button" id="loadButton" type="button">Open run…</button>
+  <input type="file" id="fileInput" accept=".json,application/json">
+</header>
+
+<main>
+  <section class="stage">
+    <div id="canvasBox">
+      <canvas id="patch" aria-label="Vegetable patch grid"></canvas>
+      <div id="tooltip"></div>
+      <div id="empty">
+        <strong>No run loaded</strong>
+        <span>Run <code>go run .</code> in the somas folder, then open <code>runs/latest.json</code><br>with the button above or drop it here.</span>
+      </div>
+    </div>
+    <div class="frameRow">
+      <button class="button iconButton" id="startButton" type="button" title="Back to the start">⏮</button>
+      <button class="button iconButton" id="backButton" type="button" title="Step back (←)">◀</button>
+      <button class="button" id="playButton" type="button" title="Play / pause (space)">▶ Play</button>
+      <button class="button iconButton" id="forwardButton" type="button" title="Step forward (→)">▶</button>
+      <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Frame">
+      <span id="frameLabel">–</span>
+      <select class="button" id="speedSelect" title="Playback speed" aria-label="Playback speed">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+        <option value="8">8×</option>
+      </select>
+    </div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h2>This step</h2>
+      <div id="stepTitle">–</div>
+      <div id="stepDetail"></div>
+    </div>
+    <div class="card">
+      <h2>Collective state</h2>
+      <div class="stat">
+        <div class="statHead"><span>Vegetable patch (CPR)</span><span id="cprValue">–</span></div>
+        <div class="bar"><div class="barFill" id="cprBar" style="background:#3f9c4b"></div></div>
+      </div>
+      <div class="stat">
+        <div class="statHead"><span>Sunlight kitty (CTK)</span><span id="ctkValue">–</span></div>
+        <div class="bar"><div class="barFill" id="ctkBar"></div><div class="marker" id="ctkMarker" title="Threshold"></div></div>
+        <div class="statNote" id="ctkNote"></div>
+      </div>
+      <div class="stat">
+        <div class="statHead"><span>Agents alive</span><span id="aliveValue">–</span></div>
+        <div class="bar"><div class="barFill" id="aliveBar" style="background:var(--accent)"></div></div>
+      </div>
+    </div>
+    <div class="card logCard">
+      <h2>Event log</h2>
+      <ul id="log"></ul>
+    </div>
+    <details class="card">
+      <summary>Key</summary>
+      <ul class="legend">
+        <li><span class="swatch" style="background:linear-gradient(90deg,#7a5634,#a7a344,#2f8a3a)"></span>Bare soil → dense vegetables</li>
+        <li><span class="dot" style="background:#9a6fe0;border:2px solid #4b2f8f"></span>AmoeBoid</li>
+        <li><span class="dot" style="background:#9a6fe0;box-shadow:0 0 0 3px #ffd23f"></span>Eating this turn</li>
+        <li><span class="dot" style="background:#8d8a92;opacity:.7"></span>Dead</li>
+        <li><span class="swatch" style="background:#6fd36a"></span>Body (vegetable energy)</li>
+        <li><span class="swatch" style="background:#ffc63a"></span>Brain (sunlight energy)</li>
+        <li><span class="swatch" style="background:radial-gradient(circle,#fff 0%,rgba(255,255,255,.5) 60%,rgba(255,255,255,0) 100%);border:1px solid var(--border)"></span>Cloud (less sunlight)</li>
+      </ul>
+    </details>
+  </aside>
+</main>
+
+<script>
+"use strict";
+
+const COLORS = {
+  soil: [122, 86, 52],
+  mid: [167, 163, 68],
+  lush: [47, 138, 58],
+  leaf: "rgba(22, 92, 34, 0.75)",
+  gridLine: "rgba(0, 0, 0, 0.10)",
+  agent: "#9a6fe0",
+  agentEdge: "#4b2f8f",
+  dead: "#8d8a92",
+  deadEdge: "#5c5960",
+  highlight: "#ffd23f",
+  body: "#6fd36a",
+  brain: "#ffc63a",
+  barBack: "rgba(0, 0, 0, 0.55)",
+};
+
+const state = { run: null, frame: 0, maxBody: 1, maxBrain: 1, layout: null };
+
+const canvas = document.getElementById("patch");
+const ctx = canvas.getContext("2d");
+const canvasBox = document.getElementById("canvasBox");
+const slider = document.getElementById("frameSlider");
+const tooltip = document.getElementById("tooltip");
+
+// ---------- loading ----------
+
+async function tryAutoLoad() {
+  // When served (step 6) the run is at run.json; when opened from disk, try the default output file
+  for (const url of ["run.json", "../runs/latest.json"]) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (res.ok) { loadRun(await res.json(), url); return; }
+    } catch (e) { /* not available here, try the next one */ }
+  }
+  showEmpty(true);
+}
+
+function loadRun(run, source) {
+  if (!run || !run.settings || !Array.isArray(run.frames) || run.frames.length === 0) {
+    alert("That file doesn't look like a recorded run (no settings or frames).");
+    return;
+  }
+  state.run = run;
+  state.frame = 0;
+  state.maxBody = 1;
+  state.maxBrain = 1;
+  for (const f of run.frames) {
+    for (const a of f.agents) {
+      state.maxBody = Math.max(state.maxBody, a.body);
+      state.maxBrain = Math.max(state.maxBrain, a.brain);
+    }
+  }
+  const s = run.settings;
+  document.getElementById("runInfo").textContent =
+    `${source} · ${s.agents} agents · ${s.rounds} rounds × ${s.turns} turns · ` +
+    `${s.gridWidth}×${s.gridHeight} grid · threshold ${s.threshold}`;
+  slider.max = run.frames.length - 1;
+  slider.value = 0;
+  pause();
+  buildLog();
+  showEmpty(false);
+  resize();
+  const linked = location.hash.match(/frame=(\d+)/); // e.g. index.html#frame=12 opens frame 12
+  if (linked) setFrame(Number(linked[1]) - 1);
+}
+
+function showEmpty(show) {
+  document.getElementById("empty").style.display = show ? "flex" : "none";
+  canvas.style.visibility = show ? "hidden" : "visible";
+}
+
+document.getElementById("loadButton").addEventListener("click", () => document.getElementById("fileInput").click());
+document.getElementById("fileInput").addEventListener("change", e => {
+  if (e.target.files[0]) readFile(e.target.files[0]);
+  e.target.value = "";
+});
+function readFile(file) {
+  file.text().then(text => {
+    try { loadRun(JSON.parse(text), file.name); }
+    catch (err) { alert("Could not read " + file.name + ": " + err.message); }
+  });
+}
+window.addEventListener("dragover", e => { e.preventDefault(); document.body.classList.add("dragging"); });
+window.addEventListener("dragleave", e => { if (!e.relatedTarget) document.body.classList.remove("dragging"); });
+window.addEventListener("drop", e => {
+  e.preventDefault();
+  document.body.classList.remove("dragging");
+  if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
+});
+
+// ---------- frame selection ----------
+
+function setFrame(i) {
+  if (!state.run) return;
+  state.frame = Math.max(0, Math.min(state.run.frames.length - 1, i));
+  slider.value = state.frame;
+  render();
+}
+slider.addEventListener("input", () => { pause(); setFrame(Number(slider.value)); });
+window.addEventListener("keydown", e => {
+  if (e.target.tagName === "SELECT" || (e.target.tagName === "INPUT" && e.target.type !== "range")) return;
+  if (e.key === "ArrowRight") { pause(); setFrame(state.frame + 1); e.preventDefault(); }
+  if (e.key === "ArrowLeft") { pause(); setFrame(state.frame - 1); e.preventDefault(); }
+  if (e.key === " ") { togglePlay(); e.preventDefault(); }
+});
+
+// ---------- playback ----------
+
+const BASE_FPS = 3; // frames per second at 1x
+const playButton = document.getElementById("playButton");
+const speedSelect = document.getElementById("speedSelect");
+let timer = null;
+
+function play() {
+  if (!state.run) return;
+  if (state.frame >= state.run.frames.length - 1) setFrame(0); // play again from the start
+  playButton.textContent = "⏸ Pause";
+  scheduleNext();
+}
+function scheduleNext() {
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    if (state.frame >= state.run.frames.length - 1) { pause(); return; }
+    setFrame(state.frame + 1);
+    scheduleNext();
+  }, 1000 / (BASE_FPS * Number(speedSelect.value)));
+}
+function pause() {
+  clearTimeout(timer);
+  timer = null;
+  playButton.textContent = "▶ Play";
+}
+function togglePlay() { timer ? pause() : play(); }
+
+playButton.addEventListener("click", togglePlay);
+speedSelect.addEventListener("change", () => { if (timer) scheduleNext(); });
+document.getElementById("startButton").addEventListener("click", () => { pause(); setFrame(0); });
+document.getElementById("backButton").addEventListener("click", () => { pause(); setFrame(state.frame - 1); });
+document.getElementById("forwardButton").addEventListener("click", () => { pause(); setFrame(state.frame + 1); });
+
+// ---------- sizing ----------
+
+function resize() {
+  if (!state.run) return;
+  const { gridWidth: W, gridHeight: H } = state.run.settings;
+  const box = canvasBox.getBoundingClientRect();
+  const cell = Math.max(8, Math.floor(Math.min(box.width / W, box.height / H)));
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = cell * W + "px";
+  canvas.style.height = cell * H + "px";
+  canvas.width = Math.round(cell * W * dpr);
+  canvas.height = Math.round(cell * H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  state.layout = { cell, W, H };
+  render();
+}
+new ResizeObserver(resize).observe(canvasBox);
+
+// ---------- helpers ----------
+
+function lerpColor(a, b, t) {
+  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(",")})`;
+}
+function tileColor(frac) {
+  return frac < 0.5
+    ? lerpColor(COLORS.soil, COLORS.mid, frac / 0.5)
+    : lerpColor(COLORS.mid, COLORS.lush, (frac - 0.5) / 0.5);
+}
+// small deterministic hash so leaves and blob shapes don't flicker between frames
+function hash(...nums) {
+  let h = 2166136261;
+  for (const n of nums) { h ^= n; h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 10000) / 10000;
+}
+function idSeed(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return h;
+}
+// mirrors weather.Coverage in Go: thickest at the centre, fading to 0 at the radius, wrapping at the edges
+function coverage(clouds, x, y, W, H) {
+  let clear = 1;
+  for (const c of clouds) {
+    if (c.radius <= 0) continue;
+    let dx = Math.abs(x + 0.5 - c.x); dx = Math.min(dx, W - dx);
+    let dy = Math.abs(y + 0.5 - c.y); dy = Math.min(dy, H - dy);
+    clear *= 1 - Math.max(0, 1 - Math.hypot(dx, dy) / c.radius);
+  }
+  return 1 - clear;
+}
+function actingAgents(frame) {
+  return new Set(frame.events.filter(e => e.kind === "appropriate").map(e => e.agent));
+}
+const fmt = n => (Math.round(n * 10) / 10).toLocaleString();
+
+// ---------- drawing ----------
+
+function render() {
+  if (!state.run || !state.layout) return;
+  const frame = state.run.frames[state.frame];
+  drawTiles(frame);
+  drawAgents(frame);
+  drawClouds(frame);
+  updateText(frame);
+  updateStats(frame);
+  updateLog();
+}
+
+// ---------- side panel stats ----------
+
+function updateStats(frame) {
+  const s = state.run.settings;
+  document.getElementById("cprValue").textContent = `${fmt(frame.cpr)} / ${fmt(s.capacity)}`;
+  document.getElementById("cprBar").style.width = pct(frame.cpr / s.capacity);
+
+  // the kitty only fills at the end of a round, so between rounds show the most recent round's kitty
+  let kitty = null;
+  for (let i = state.frame; i >= 0; i--) {
+    if (state.run.frames[i].phase === "end") { kitty = state.run.frames[i]; break; }
+  }
+  const scale = s.threshold * 2; // the threshold marker sits in the middle of the bar
+  const ctkBar = document.getElementById("ctkBar");
+  document.getElementById("ctkMarker").style.left = "calc(50% - 1px)";
+  if (kitty) {
+    const met = kitty.ctk >= kitty.threshold;
+    ctkBar.style.width = pct(kitty.ctk / scale);
+    ctkBar.style.background = met ? "#2f9a45" : "#d9902a";
+    document.getElementById("ctkValue").textContent = `${fmt(kitty.ctk)} / ${fmt(kitty.threshold)}`;
+    document.getElementById("ctkNote").textContent =
+      (kitty === frame ? "This round: " : `Round ${kitty.round + 1}: `) + (met ? "threshold met, patch regrew" : "below threshold, no regrowth");
+  } else {
+    ctkBar.style.width = "0";
+    document.getElementById("ctkValue").textContent = `– / ${fmt(s.threshold)}`;
+    document.getElementById("ctkNote").textContent = "Agents provision at the end of each round";
+  }
+
+  const alive = frame.agents.filter(a => a.alive).length;
+  document.getElementById("aliveValue").textContent = `${alive} / ${frame.agents.length}`;
+  document.getElementById("aliveBar").style.width = pct(frame.agents.length ? alive / frame.agents.length : 0);
+}
+const pct = f => Math.max(0, Math.min(1, f)) * 100 + "%";
+
+// ---------- event log ----------
+
+const logList = document.getElementById("log");
+let logItems = []; // [{frame, element}]
+
+// builds every log line for the run once; updateLog shows the ones up to the current frame
+function buildLog() {
+  logList.innerHTML = "";
+  logItems = [];
+  const add = (frame, text, cls) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    if (cls) li.className = cls;
+    logList.appendChild(li);
+    logItems.push({ frame, element: li });
+  };
+  const names = {};
+  for (const f of state.run.frames) for (const a of f.agents) names[a.id] = a.name;
+
+  state.run.frames.forEach((f, i) => {
+    if (f.phase === "start") {
+      add(i, `Round ${f.round + 1}`, "round");
+      const sun = f.events.filter(e => e.kind === "sun");
+      if (sun.length) {
+        const lo = fmt(Math.min(...sun.map(e => e.amount))), hi = fmt(Math.max(...sun.map(e => e.amount)));
+        const who = sun.length === 1 ? names[sun[0].agent] : `${sun.length} agents`;
+        add(i, `Sunrise: ${who} got ${lo === hi ? lo : `${lo}–${hi}`} sunlight`, "muted");
+      }
+    } else if (f.phase === "turn") {
+      for (const e of f.events.filter(e => e.kind === "appropriate")) {
+        add(i, `${names[e.agent]} took ${fmt(e.amount)}`);
+      }
+    } else {
+      const regrow = f.events.find(e => e.kind === "regrow");
+      if (regrow) add(i, `Kitty ${fmt(f.ctk)} ≥ ${fmt(f.threshold)}, patch regrew ${fmt(regrow.amount)}`, "good");
+      else add(i, `Kitty ${fmt(f.ctk)} < ${fmt(f.threshold)}, no regrowth`, "warn");
+      for (const e of f.events.filter(e => e.kind === "death")) add(i, `${names[e.agent]} died`, "bad");
+    }
+  });
+}
+
+function updateLog() {
+  for (const { frame, element } of logItems) {
+    element.hidden = frame > state.frame;
+    element.classList.toggle("current", frame === state.frame && !element.classList.contains("round"));
+  }
+  logList.scrollTop = logList.scrollHeight;
+}
+
+function drawTiles(frame) {
+  const { cell, W, H } = state.layout;
+  const cap = state.run.settings.tileCapacity || 1;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const frac = Math.max(0, Math.min(1, frame.tiles[y][x] / cap));
+      ctx.fillStyle = tileColor(frac);
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+      // leaves: up to 6 per tile, more as the tile fills up
+      const leaves = Math.round(frac * 6);
+      ctx.fillStyle = COLORS.leaf;
+      for (let i = 0; i < leaves; i++) {
+        const lx = (x + 0.12 + 0.76 * hash(x, y, i, 1)) * cell;
+        const ly = (y + 0.12 + 0.76 * hash(x, y, i, 2)) * cell;
+        const rot = hash(x, y, i, 3) * Math.PI;
+        ctx.beginPath();
+        ctx.ellipse(lx, ly, cell * 0.07, cell * 0.035, rot, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.strokeStyle = COLORS.gridLine;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 1; x < W; x++) { ctx.moveTo(x * cell + 0.5, 0); ctx.lineTo(x * cell + 0.5, H * cell); }
+  for (let y = 1; y < H; y++) { ctx.moveTo(0, y * cell + 0.5); ctx.lineTo(W * cell, y * cell + 0.5); }
+  ctx.stroke();
+}
+
+function blobPath(cx, cy, r, seed) {
+  // a wobbly amoeba outline that is fixed for each agent
+  const points = 14;
+  const lobes = 3 + (Math.abs(seed) % 3);
+  const phase = (Math.abs(seed) % 628) / 100;
+  ctx.beginPath();
+  for (let i = 0; i <= points; i++) {
+    const t = (i / points) * Math.PI * 2;
+    const rr = r * (1 + 0.13 * Math.sin(lobes * t + phase));
+    const px = cx + Math.cos(t) * rr;
+    const py = cy + Math.sin(t) * rr;
+    if (i === 0) ctx.moveTo(px, py);
+    else {
+      const tm = ((i - 0.5) / points) * Math.PI * 2;
+      const rm = r * (1 + 0.13 * Math.sin(lobes * tm + phase)) * 1.04;
+      ctx.quadraticCurveTo(cx + Math.cos(tm) * rm, cy + Math.sin(tm) * rm, px, py);
+    }
+  }
+  ctx.closePath();
+}
+
+function drawAgents(frame) {
+  const { cell } = state.layout;
+  const acting = actingAgents(frame);
+  for (const a of frame.agents) {
+    const cx = (a.x + 0.5) * cell;
+    const cy = (a.y + 0.42) * cell;
+    const r = cell * 0.25;
+    const seed = idSeed(a.id);
+
+    if (acting.has(a.id)) {
+      ctx.save();
+      ctx.shadowColor = COLORS.highlight;
+      ctx.shadowBlur = cell * 0.25;
+      ctx.strokeStyle = COLORS.highlight;
+      ctx.lineWidth = Math.max(2, cell * 0.06);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 1.45, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.globalAlpha = a.alive ? 0.95 : 0.6;
+    blobPath(cx, cy, r, seed);
+    ctx.fillStyle = a.alive ? COLORS.agent : COLORS.dead;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.5, cell * 0.03);
+    ctx.strokeStyle = a.alive ? COLORS.agentEdge : COLORS.deadEdge;
+    ctx.stroke();
+
+    // eyes: dots when alive, crosses when dead
+    const ex = r * 0.35, ey = cy - r * 0.15, es = r * 0.14;
+    ctx.fillStyle = ctx.strokeStyle = "#1d1426";
+    ctx.lineWidth = Math.max(1, cell * 0.018);
+    for (const side of [-1, 1]) {
+      const px = cx + side * ex;
+      if (a.alive) {
+        ctx.beginPath(); ctx.arc(px, ey, es, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(px - es, ey - es); ctx.lineTo(px + es, ey + es);
+        ctx.moveTo(px + es, ey - es); ctx.lineTo(px - es, ey + es);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // body and brain bars, scaled to the largest value in the run
+    const bw = cell * 0.72, bh = Math.max(3, cell * 0.065);
+    const bx = (a.x + 0.5) * cell - bw / 2;
+    let by = (a.y + 0.78) * cell;
+    for (const [value, max, color] of [[a.body, state.maxBody, COLORS.body], [a.brain, state.maxBrain, COLORS.brain]]) {
+      ctx.fillStyle = COLORS.barBack;
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = a.alive ? color : COLORS.dead;
+      ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, value / max)), bh);
+      by += bh + Math.max(1, cell * 0.02);
+    }
+
+    // name in the cell's top-left corner
+    ctx.font = `600 ${Math.max(9, Math.round(cell * 0.15))}px system-ui, sans-serif`;
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "rgba(0,0,0,.55)";
+    ctx.fillText(a.name, a.x * cell + cell * 0.06 + 1, a.y * cell + cell * 0.04 + 1);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(a.name, a.x * cell + cell * 0.06, a.y * cell + cell * 0.04);
+  }
+}
+
+function drawClouds(frame) {
+  const { cell, W, H } = state.layout;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, W * cell, H * cell);
+  ctx.clip();
+  for (const c of frame.clouds) {
+    const r = c.radius * cell;
+    // draw the cloud plus its copies across each edge, since the grid wraps around
+    for (const ox of [-W, 0, W]) {
+      for (const oy of [-H, 0, H]) {
+        const cx = (c.x + ox) * cell, cy = (c.y + oy) * cell;
+        if (cx + r < 0 || cx - r > W * cell || cy + r < 0 || cy - r > H * cell) continue;
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        g.addColorStop(0, "rgba(250, 252, 255, 0.62)");
+        g.addColorStop(0.5, "rgba(240, 244, 250, 0.36)");
+        g.addColorStop(1, "rgba(235, 240, 248, 0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+function updateText(frame) {
+  const s = state.run.settings;
+  const total = state.run.frames.length;
+  document.getElementById("frameLabel").textContent = `Frame ${state.frame + 1} / ${total}`;
+
+  const round = `Round ${frame.round + 1} of ${s.rounds}`;
+  const names = Object.fromEntries(frame.agents.map(a => [a.id, a.name]));
+  let title, detail;
+  if (frame.phase === "start") {
+    const sun = frame.events.filter(e => e.kind === "sun");
+    const avg = sun.length ? sun.reduce((t, e) => t + e.amount, 0) / sun.length : 0;
+    title = `${round}: sunrise`;
+    detail = sun.length ? `${sun.length} agents got sunlight (average ${fmt(avg)})` : "No agents alive";
+  } else if (frame.phase === "turn") {
+    const eat = frame.events.find(e => e.kind === "appropriate");
+    title = `${round}, turn ${frame.turn + 1} of ${s.turns}`;
+    detail = eat ? `${names[eat.agent] || "?"} took ${fmt(eat.amount)} vegetables` : "Nobody could eat";
+  } else {
+    const regrow = frame.events.find(e => e.kind === "regrow");
+    const deaths = frame.events.filter(e => e.kind === "death").map(e => names[e.agent] || "?");
+    title = `${round}: end of round`;
+    detail = `Kitty ${fmt(frame.ctk)} / ${fmt(frame.threshold)}: ` +
+      (regrow ? `patch regrew ${fmt(regrow.amount)}` : "no regrowth") +
+      (deaths.length ? `. Died: ${deaths.join(", ")}` : "");
+  }
+  document.getElementById("stepTitle").textContent = title;
+  document.getElementById("stepDetail").textContent = `${detail}. Patch holds ${fmt(frame.cpr)}.`;
+}
+
+// ---------- hover details ----------
+
+canvas.addEventListener("mousemove", e => {
+  if (!state.run || !state.layout) return;
+  const { cell, W, H } = state.layout;
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rect.left) / cell);
+  const y = Math.floor((e.clientY - rect.top) / cell);
+  if (x < 0 || y < 0 || x >= W || y >= H) { tooltip.style.display = "none"; return; }
+  const frame = state.run.frames[state.frame];
+  const cover = coverage(frame.clouds, x, y, W, H);
+  const lines = [`Tile (${x}, ${y}): ${fmt(frame.tiles[y][x])} / ${fmt(state.run.settings.tileCapacity)} vegetables`,
+                 `Cloud cover ${Math.round(cover * 100)}%`];
+  for (const a of frame.agents.filter(a => a.x === x && a.y === y)) {
+    lines.unshift(`<b>${a.name}</b>${a.alive ? "" : " (dead)"}: body ${fmt(a.body)}, brain ${fmt(a.brain)}`);
+  }
+  tooltip.innerHTML = lines.join("<br>");
+  tooltip.style.display = "block";
+  const boxRect = canvasBox.getBoundingClientRect();
+  let left = e.clientX - boxRect.left + 14, top = e.clientY - boxRect.top + 14;
+  if (left + tooltip.offsetWidth > boxRect.width) left -= tooltip.offsetWidth + 28;
+  if (top + tooltip.offsetHeight > boxRect.height) top -= tooltip.offsetHeight + 28;
+  tooltip.style.left = left + "px";
+  tooltip.style.top = top + "px";
+});
+canvas.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
+
+tryAutoLoad();
+</script>
+</body>
+</html>
